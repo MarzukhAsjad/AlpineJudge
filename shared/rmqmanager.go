@@ -3,7 +3,7 @@ package shared
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -16,23 +16,24 @@ type RMQManager struct {
 
 func failOnError(err error, msg string) {
 	if err != nil {
-		log.Panicf("%s %s\n", err, msg)
+		slog.Error(msg, "error", err)
+		panic(err)
 	}
 }
 
 func NewRMQManager(ctx context.Context, amqpURL string) (*RMQManager, error) {
 
-	log.Printf("Connecting to RabbitMQ server at %s\n", amqpURL)
+	slog.Info("Connecting to RabbitMQ server at ", "url", amqpURL)
 
 	conn, err := amqp.Dial(amqpURL)
 	// connection retry (exponential backoff | 10s, 20s, 30s, 40s, 50s, 60s, 60s, 60s ...)
 	i := 1
 	for err != nil {
-		log.Printf("Failed to connect to RabbitMQ server. Retrying in %vs ...\n", 10*i)
+		slog.Warn("Failed to connect to RabbitMQ server. Retrying...", "error", err, "retryInSeconds", 10*i)
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("Exiting RMQ Client service...\n")
+			return nil, fmt.Errorf("Exiting RMQ Client service due to context cancellation: %w", ctx.Err())
 		case <-time.After(time.Duration(10*i) * time.Second):
 		}
 
@@ -42,7 +43,7 @@ func NewRMQManager(ctx context.Context, amqpURL string) (*RMQManager, error) {
 		conn, err = amqp.Dial(amqpURL)
 	}
 
-	log.Println("Connected to RabbitMQ server")
+	slog.Info("Connected to RabbitMQ server")
 
 	// Initialize the global Publisher channel
 	pubCh, err := conn.Channel()
@@ -89,7 +90,7 @@ func (m *RMQManager) Subscribe(
 		nil,   // args
 	)
 	failOnError(err, "Failed to register consumer")
-	log.Println("Consumer registered. Piping data to Go channel")
+	slog.Info("Consumer registered", "queue", q.Name, "consumerTag", consumerTag)
 
 	// Pipe the data frames in a background worker
 	go func() {
@@ -99,7 +100,7 @@ func (m *RMQManager) Subscribe(
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("Closing subscription stream for tag: %s", consumerTag)
+				slog.Info("Closing subscription stream for tag", "consumerTag", consumerTag)
 				return
 			case d, ok := <-msgs:
 				if !ok {
@@ -186,7 +187,8 @@ func (m *RMQManager) SubscribeToExchange(
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	log.Printf("[RMQ] Subscribed to exchange '%s' [Key: %s] via temp queue '%s'", exchangeName, routingKey, q.Name)
+	slog.Info("[RMQ] Subscribed to exchange", "exchange", exchangeName, "key", routingKey, "queue name", q.Name,
+)
 
 	// pipe messages to local Go channel & manage cleanup
 	go func() {
@@ -196,7 +198,7 @@ func (m *RMQManager) SubscribeToExchange(
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("[RMQ] Client context cancelled. Tearing down stream for key: %s", routingKey)
+				slog.Info("[RMQ] Client context cancelled. Tearing down stream for key", "key", routingKey)
 				return
 			case d, ok := <-msgs:
 				if !ok {
