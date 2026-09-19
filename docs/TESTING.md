@@ -17,6 +17,7 @@ Integration tests validate both successful execution and expected failure scenar
 **Steps to run tests**
 ```bash
 cd ajagent
+cd tests && python generator.py && cd -
 go test -v ./...
 ```
 
@@ -37,7 +38,9 @@ Validated using a dedicated container factory.
 
 **Steps to run tests**
 ```bash
+pip install cryptography
 cd runner
+cd tests && python generator1.py && python generator2.py
 sudo go test -v ./...
 ```
 ---
