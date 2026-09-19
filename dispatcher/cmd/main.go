@@ -1,7 +1,16 @@
 package main
 
-import "dispatcher/pkg"
+import (
+	"dispatcher/pkg"
+	"log/slog"
+	"os"
+)
 
 func main() {
+	slog.SetDefault(slog.New(
+		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+			AddSource: true,
+		}),
+    ))
 	pkg.Dispatcher()
 }

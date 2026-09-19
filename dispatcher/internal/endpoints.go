@@ -5,8 +5,9 @@ import (
 	"shared"
 
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -25,6 +26,7 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
+// Helper function to write JSON error responses to the client
 func writeError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -40,37 +42,48 @@ func (env *ServerEnv) ResponseRootHanlder(w http.ResponseWriter, r *http.Request
 
 func (env *ServerEnv) SendPresignedKeyForTestset(w http.ResponseWriter, r *http.Request) {
 
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("Method not allowed"))
-		return
-	}
+    if r.Method != http.MethodPost {
+        writeError(w, http.StatusMethodNotAllowed, errors.New("Method not allowed"))
+        return
+    }
 
-	var data map[string]string
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
-		return
-	}
 
-	if uploadKey, exists := data["testset_id"]; exists {
-		s3PresignedKey, err := env.s3m.GeneratePresignedUploadURL(*env.ctx, uploadKey)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to generate Presigned Upload url: %v", err), http.StatusInternalServerError)
-			return
-		}
+    var data map[string]string
+    if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+        slog.Warn("Invalid JSON payload", "error", err)
+        writeError(w, http.StatusBadRequest, errors.New("invalid JSON payload"))
+        return
+    }
 
-		// success
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(map[string]string{
-			"s3_presigned_key": s3PresignedKey,
-		})
-	}
+
+    uploadKey, exists := data["testset_id"]
+    if !exists || uploadKey == "" {
+        writeError(w, http.StatusBadRequest, errors.New("testset_id is required"))
+        return
+    }
+
+
+    s3PresignedKey, err := env.s3m.GeneratePresignedUploadURL(*env.ctx, uploadKey)
+    if err != nil {
+        slog.Error("Failed to generate Presigned Upload URL", "testset_id", uploadKey, "error", err,)
+        writeError(w, http.StatusInternalServerError, errors.New("unable to generate presigned upload URL"))
+        return
+    }
+
+    // success
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusAccepted)
+    if err := json.NewEncoder(w).Encode(map[string]string {
+        "s3_presigned_key": s3PresignedKey,
+    }); err != nil {
+        slog.Error("Failed to encode Presigned Upload URL response", "testset_id", uploadKey, "error", err,)
+    }
 }
 
 func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("Method not allowed"))
+		writeError(w, http.StatusMethodNotAllowed, errors.New("Method not allowed"))
 		return
 	}
 
@@ -79,6 +92,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 	// malformed submission
 	err := json.NewDecoder(r.Body).Decode(&submission)
 	if err != nil {
+		slog.Error("Failed to decode submission", "error", err,)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -88,6 +102,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 		downstream validations stop immediately.
 	*/
 	if err = ValidateSubmission(r.Context(), *env.s3m, submission); err != nil {
+		slog.Error("Failed to validate submission", "submission_id", submission.SubmissionID, "error", err,)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -95,6 +110,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 	// marshall requests into transferrable SubmissionSpec
 	bodyBytes, err := json.Marshal(submission)
 	if err != nil {
+		slog.Error("Failed to marshal submission", "submission_id", submission.SubmissionID, "error", err,)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -111,6 +127,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 		os.Getenv("RABBITMQ_QUEUE_NAME"),
 		msg,
 	); err != nil {
+		slog.Error("Failed to publish message to RabbitMQ", "submission_id", submission.SubmissionID, "error", err,)
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("Message broker drop: %v", err))
 		return
 	}
@@ -134,6 +151,7 @@ func (env *ServerEnv) SSEHandler(w http.ResponseWriter, r *http.Request) {
 	// flush write
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		slog.Error("HTTP Flusher not supported")
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
@@ -144,7 +162,8 @@ func (env *ServerEnv) SSEHandler(w http.ResponseWriter, r *http.Request) {
 
 	exchangeName, exists := os.LookupEnv("DIRECT_EXCHANGE_NAME")
 	if !exists {
-		log.Fatal("Env var DIRECT_EXCHANGE_NAME not found")
+		slog.Error("Env var DIRECT_EXCHANGE_NAME not found")
+		os.Exit(1)
 	}
 
 	// 2. Subscribe and bind the temp queue to the exchange using the routing key
@@ -155,6 +174,7 @@ func (env *ServerEnv) SSEHandler(w http.ResponseWriter, r *http.Request) {
 		exchangeName,
 		routingKey, // <-- ONLY listen for messages matching submission_id
 	); err != nil {
+		slog.Error("Failed to subscribe to exchange", "error", err,)
 		http.Error(w, "Execution event queue failed!", http.StatusInternalServerError)
 		return
 	}
@@ -162,17 +182,18 @@ func (env *ServerEnv) SSEHandler(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-r.Context().Done():
-			log.Println("SSE client disconnected safely.")
+			slog.Info("SSE client disconnected safely.")
 			return
 		case msg, ok := <-execEventQueue:
 			if !ok {
-				log.Println("Event queue subscription closed stream.")
+				slog.Info("Event queue subscription closed stream.")
 				return
 			}
 
 			// write to HTTP pipe
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", string(msg.Body)); err != nil {
 				// if write fails, DO NOT ACK. Nack/Reject or exit loop to trigger channel close.
+				slog.Error("Failed to write SSE message", "error", err)
 				_ = msg.Nack(false, false) // Rejects message without requeueing
 				return
 			}
@@ -202,7 +223,7 @@ func InitHTTPServer(
 	mux.HandleFunc("GET /submissions/{submission_id}/events", env.SSEHandler)
 
 	serverPort := ":1111"
-	fmt.Printf("Starting server on http://localhost%s\n", serverPort)
+	slog.Info("Starting server on http://localhost" + serverPort)
 
 	return &http.Server{
 		Addr:    serverPort,

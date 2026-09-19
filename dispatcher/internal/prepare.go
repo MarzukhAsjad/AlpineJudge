@@ -2,11 +2,11 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"shared"
 	"slices"
 	"strings"
-
-	"shared"
 )
 
 var availableLanguages []string = []string{"c", "cpp", "java", "python", "go", "js"}
@@ -24,7 +24,7 @@ func ValidateSubmission(ctx context.Context, s3m shared.S3Manager, submission Su
 	}
 
 	if exists {
-		return fmt.Errorf("submission ID already used")
+		return errors.New("submission ID already used")
 	}
 
 	// check language availability
@@ -53,7 +53,7 @@ func PrepareSubmission(
 	srcS3key := "submissions/" + submission.SubmissionID + "/"
 
 	if err := s3m.UploadFileToS3(ctx, srcS3key, body); err != nil {
-		return shared.JobSpec{}, err
+		return shared.JobSpec{}, fmt.Errorf("upload submission source to S3: %w", err)
 	}
 
 	jobspec := shared.JobSpec{
