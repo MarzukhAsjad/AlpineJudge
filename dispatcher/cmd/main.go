@@ -11,6 +11,6 @@ func main() {
 		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			AddSource: true,
 		}),
-    ))
+	))
 	pkg.Dispatcher()
 }

@@ -118,7 +118,7 @@ func CreateWarmContainer(ctx context.Context, client *containerd.Client, slotID 
 		return nil, fmt.Errorf("agent failed to connect: %w", err)
 	}
 
-		wc := WarmContainer{
+	wc := WarmContainer{
 		Container:  container,
 		Task:       task,
 		ContStatus: statusC,

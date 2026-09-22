@@ -70,7 +70,7 @@ func Dispatcher() {
 
 	// wait for OS signal to stop
 	<-ctx.Done()
-	slog.Info("Termination signal caught! Initiating graceful teardown protocol.",  "shutdown_reason", ctx.Err())
+	slog.Info("Termination signal caught! Initiating graceful teardown protocol.", "shutdown_reason", ctx.Err())
 
 	// 3. raceful shutdown Phase
 	// Force-kill the HTTP engine if it takes longer than 5 seconds to clear out pending traffic

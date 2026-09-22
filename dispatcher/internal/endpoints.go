@@ -42,42 +42,39 @@ func (env *ServerEnv) ResponseRootHanlder(w http.ResponseWriter, r *http.Request
 
 func (env *ServerEnv) SendPresignedKeyForTestset(w http.ResponseWriter, r *http.Request) {
 
-    if r.Method != http.MethodPost {
-        writeError(w, http.StatusMethodNotAllowed, errors.New("Method not allowed"))
-        return
-    }
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("Method not allowed"))
+		return
+	}
 
+	var data map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		slog.Warn("Invalid JSON payload", "error", err)
+		writeError(w, http.StatusBadRequest, errors.New("invalid JSON payload"))
+		return
+	}
 
-    var data map[string]string
-    if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-        slog.Warn("Invalid JSON payload", "error", err)
-        writeError(w, http.StatusBadRequest, errors.New("invalid JSON payload"))
-        return
-    }
+	uploadKey, exists := data["testset_id"]
+	if !exists || uploadKey == "" {
+		writeError(w, http.StatusBadRequest, errors.New("testset_id is required"))
+		return
+	}
 
+	s3PresignedKey, err := env.s3m.GeneratePresignedUploadURL(*env.ctx, uploadKey)
+	if err != nil {
+		slog.Error("Failed to generate Presigned Upload URL", "testset_id", uploadKey, "error", err)
+		writeError(w, http.StatusInternalServerError, errors.New("unable to generate presigned upload URL"))
+		return
+	}
 
-    uploadKey, exists := data["testset_id"]
-    if !exists || uploadKey == "" {
-        writeError(w, http.StatusBadRequest, errors.New("testset_id is required"))
-        return
-    }
-
-
-    s3PresignedKey, err := env.s3m.GeneratePresignedUploadURL(*env.ctx, uploadKey)
-    if err != nil {
-        slog.Error("Failed to generate Presigned Upload URL", "testset_id", uploadKey, "error", err,)
-        writeError(w, http.StatusInternalServerError, errors.New("unable to generate presigned upload URL"))
-        return
-    }
-
-    // success
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusAccepted)
-    if err := json.NewEncoder(w).Encode(map[string]string {
-        "s3_presigned_key": s3PresignedKey,
-    }); err != nil {
-        slog.Error("Failed to encode Presigned Upload URL response", "testset_id", uploadKey, "error", err,)
-    }
+	// success
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(map[string]string{
+		"s3_presigned_key": s3PresignedKey,
+	}); err != nil {
+		slog.Error("Failed to encode Presigned Upload URL response", "testset_id", uploadKey, "error", err)
+	}
 }
 
 func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +89,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 	// malformed submission
 	err := json.NewDecoder(r.Body).Decode(&submission)
 	if err != nil {
-		slog.Error("Failed to decode submission", "error", err,)
+		slog.Error("Failed to decode submission", "error", err)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -102,7 +99,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 		downstream validations stop immediately.
 	*/
 	if err = ValidateSubmission(r.Context(), *env.s3m, submission); err != nil {
-		slog.Error("Failed to validate submission", "submission_id", submission.SubmissionID, "error", err,)
+		slog.Error("Failed to validate submission", "submission_id", submission.SubmissionID, "error", err)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -110,7 +107,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 	// marshall requests into transferrable SubmissionSpec
 	bodyBytes, err := json.Marshal(submission)
 	if err != nil {
-		slog.Error("Failed to marshal submission", "submission_id", submission.SubmissionID, "error", err,)
+		slog.Error("Failed to marshal submission", "submission_id", submission.SubmissionID, "error", err)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
@@ -127,7 +124,7 @@ func (env *ServerEnv) SubmissionReciever(w http.ResponseWriter, r *http.Request)
 		os.Getenv("RABBITMQ_QUEUE_NAME"),
 		msg,
 	); err != nil {
-		slog.Error("Failed to publish message to RabbitMQ", "submission_id", submission.SubmissionID, "error", err,)
+		slog.Error("Failed to publish message to RabbitMQ", "submission_id", submission.SubmissionID, "error", err)
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("Message broker drop: %v", err))
 		return
 	}
@@ -174,7 +171,7 @@ func (env *ServerEnv) SSEHandler(w http.ResponseWriter, r *http.Request) {
 		exchangeName,
 		routingKey, // <-- ONLY listen for messages matching submission_id
 	); err != nil {
-		slog.Error("Failed to subscribe to exchange", "error", err,)
+		slog.Error("Failed to subscribe to exchange", "error", err)
 		http.Error(w, "Execution event queue failed!", http.StatusInternalServerError)
 		return
 	}

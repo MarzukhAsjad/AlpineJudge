@@ -46,7 +46,7 @@ func InitS3Manager(
 		}
 	})
 
-	slog.Info("S3 manager initialized", "bucket", bucket, "region", region, "endpoint", customEndpoint, )
+	slog.Info("S3 manager initialized", "bucket", bucket, "region", region, "endpoint", customEndpoint)
 
 	return &S3Manager{
 		client: s3Client,

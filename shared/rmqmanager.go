@@ -187,8 +187,7 @@ func (m *RMQManager) SubscribeToExchange(
 		return fmt.Errorf("failed to register consumer: %w", err)
 	}
 
-	slog.Info("[RMQ] Subscribed to exchange", "exchange", exchangeName, "key", routingKey, "queue name", q.Name,
-)
+	slog.Info("[RMQ] Subscribed to exchange", "exchange", exchangeName, "key", routingKey, "queue name", q.Name)
 
 	// pipe messages to local Go channel & manage cleanup
 	go func() {
