@@ -19,11 +19,10 @@ func ProcessJobSpec(
 
 	// NACK bad JSON and move on
 	if err != nil {
-		slog.Error("Error processing job spec in JSON", "error", err, "raw", string(msg.Body))
+		slog.Error("Failed to unmarshal jobspec JSON", "error", err, "raw", string(msg.Body))
 		_ = msg.Nack(false, false)
 		return shared.JobSpec{}, err
 	}
 
-	// log.Printf("Processed job spec: %v\n", jobspec)
 	return jobspec, nil
 }

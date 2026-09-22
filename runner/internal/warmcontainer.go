@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
@@ -47,7 +47,7 @@ func CreateWarmContainer(ctx context.Context, client *containerd.Client, slotID 
 	containerID := generateContainerID()
 	snapshotID := containerID + "-snapshot"
 
-	log.Printf("Creating container with containerID: %v | snapshotID: %v\n", containerID, snapshotID)
+	slog.Debug("Creating container", "container_id", containerID, "snapshot_id", snapshotID)
 
 	container, err := client.NewContainer(
 		ctx,
@@ -118,8 +118,7 @@ func CreateWarmContainer(ctx context.Context, client *containerd.Client, slotID 
 		return nil, fmt.Errorf("agent failed to connect: %w", err)
 	}
 
-	// log.Printf("Successfully initiated warmed container with ID %s and snapshot with ID %v", container.ID(), snapshotID)
-	wc := WarmContainer{
+		wc := WarmContainer{
 		Container:  container,
 		Task:       task,
 		ContStatus: statusC,

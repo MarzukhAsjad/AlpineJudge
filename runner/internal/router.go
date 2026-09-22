@@ -3,7 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"shared"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -17,7 +17,7 @@ func routeToRMQ(
 	routingKey := submissionID
 
 	if !json.Valid(payload) {
-		log.Printf("Failed to stream event to RMQ: invalid JSON payload")
+		slog.Error("Failed to stream event to RMQ: invalid JSON payload")
 		return
 	}
 	msg := amqp.Publishing{
@@ -26,6 +26,6 @@ func routeToRMQ(
 	}
 
 	if err := rmqm.PublishToExchange(sockCtx, exchangename, routingKey, msg); err != nil {
-		log.Printf("Failed to stream event to RMQ: %v", err)
+		slog.Error("Failed to stream event to RMQ", "submission_id", submissionID, "error", err)
 	}
 }

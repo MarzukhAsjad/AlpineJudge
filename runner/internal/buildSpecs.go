@@ -3,6 +3,7 @@ package internal
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"utils"
@@ -109,8 +110,15 @@ func build_ociSpecOpts(slotID uint32) []oci.SpecOpts {
 	// evaluated last to guarantee execution parameters survive
 	opts = append(opts, oci.WithProcessArgs("/usr/bin/ajagent"))
 
-	// log.Printf("Built OCI specs with following parameters:  \nCpu Quota: %v \nMemory: %v \nPID limiy: %v \nNNP: %v \nRRO: %v\n",
-	// 	cpuQuota, memLimitMB, pidLimit, nnp, rroRootfs)
+	slog.Debug("Built OCI specs",
+		"slot", slotID,
+		"cpu_quota", quota,
+		"cpu_period", period,
+		"memory_mb", memLimitMB,
+		"pid_limit", pidLimit,
+		"no_new_privileges", nnp,
+		"readonly_rootfs", rroRootfs,
+	)
 
 	return opts
 }

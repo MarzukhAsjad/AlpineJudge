@@ -2,7 +2,7 @@ package internal
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"utils"
 
 	"shared"
@@ -12,7 +12,7 @@ func PrepareExecrules(
 	ctx context.Context, s3m shared.S3Manager, jobspec shared.JobSpec,
 ) (error, utils.ExecRules) {
 
-	log.Printf("Recieveed JobSpec2: %v\n", jobspec)
+	slog.Debug("Received JobSpec", "jobspec", jobspec)
 
 	language := jobspec.Language
 

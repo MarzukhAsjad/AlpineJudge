@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"shared"
@@ -54,19 +54,22 @@ func (wc *WarmContainer) ExecSubm(
 		maxlogcapKB, exists := os.LookupEnv("MAX_LOG_CAP_KB")
 
 		if !exists {
-			log.Fatal("Missing env var DIRECT_EXCHANGE_NAME")
+			slog.Error("Fatal: missing env var MAX_LOG_CAP_KB")
+			os.Exit(1)
 		}
 		scanner := bufio.NewScanner(c)
 		buf := make([]byte, 60*1024) // 60 KB buffer size
 		maxlogcapKBn, err := strconv.ParseInt(maxlogcapKB, 10, 32)
 		if err != nil {
-			log.Fatalf("Failed converting maxlogcapKB to int: %v", err)
+			slog.Error("Fatal: failed converting MAX_LOG_CAP_KB to int", "error", err)
+			os.Exit(1)
 		}
 		scanner.Buffer(buf, int(maxlogcapKBn*1024)) // mutliplied with 1024 to make KB size
 
 		exchangename, exists := os.LookupEnv("DIRECT_EXCHANGE_NAME")
 		if !exists {
-			log.Fatal("Missing env var DIRECT_EXCHANGE_NAME")
+			slog.Error("Fatal: missing env var DIRECT_EXCHANGE_NAME")
+			os.Exit(1)
 		}
 
 		for scanner.Scan() {
@@ -82,7 +85,7 @@ func (wc *WarmContainer) ExecSubm(
 			}
 			rmqData, err := json.Marshal(&rmqPayload)
 			if err != nil {
-				log.Printf("Error marshaling json data to rmqdata: %v\n", err)
+				slog.Error("Failed to marshal event payload for RMQ", "error", err)
 			}
 
 			routeToRMQ(ctx, jobspec.SubmissionID, rmqm, exchangename, rmqData)
@@ -93,7 +96,7 @@ func (wc *WarmContainer) ExecSubm(
 					ctx, fmt.Sprintf("%v/result/stdout.log", jobspec.SubmissionID), strings.NewReader(eventStream.Stdout),
 				); err != nil {
 					// in case of error, log it and move on. Can't wait during live stream
-					log.Printf("Error uploading stdout.log to S3: %v\n", err)
+					slog.Error("Failed to upload stdout.log to S3", "submission_id", jobspec.SubmissionID, "error", err)
 				}
 			}()
 
@@ -102,13 +105,13 @@ func (wc *WarmContainer) ExecSubm(
 					ctx, fmt.Sprintf("%v/result/stderr.log", jobspec.SubmissionID), strings.NewReader(eventStream.Stderr),
 				); err != nil {
 					// in case of error, log it and move on. Can't wait during live stream
-					log.Printf("Error uploading stderr.log to S3: %v\n", err)
+					slog.Error("Failed to upload stderr.log to S3", "submission_id", jobspec.SubmissionID, "error", err)
 				}
 			}()
 		}
 
 		if err := scanner.Err(); err != nil {
-			log.Printf("Failed to scan streamed data: %v", err)
+			slog.Warn("Failed to scan streamed data", "submission_id", jobspec.SubmissionID, "error", err)
 			return
 		}
 
@@ -150,7 +153,7 @@ func (wc *WarmContainer) ExecSubm(
 		contInfo.ContainerStderr = stderrWrite.String()
 		contInfo.ContainerStdout = stdoutWriter.String()
 
-		log.Print("Task timedout. Sending SIGKILL to container...")
+		slog.Warn("Task timed out, sending SIGKILL to container", "submission_id", jobspec.SubmissionID)
 		_ = wc.Task.Kill(ctx, syscall.SIGKILL)
 	}
 
