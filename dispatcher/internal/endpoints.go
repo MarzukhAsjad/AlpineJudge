@@ -162,7 +162,7 @@ func (env *ServerEnv) SSEHandler(w http.ResponseWriter, r *http.Request) {
 
 	exchangeName, exists := os.LookupEnv("DIRECT_EXCHANGE_NAME")
 	if !exists {
-		slog.Error("Env var DIRECT_EXCHANGE_NAME not found")
+		slog.Error("Fatal: Env var DIRECT_EXCHANGE_NAME not found")
 		os.Exit(1)
 	}
 

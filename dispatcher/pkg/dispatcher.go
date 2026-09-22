@@ -33,14 +33,14 @@ func Dispatcher() {
 
 	s3m, err := shared.InitS3Manager(ctx, bucket, region, accessKey, secretKey, s3Endpoint)
 	if err != nil {
-		slog.Error("Failed to spin up S3", "error", err)
+		slog.Error("Fatal: Failed to spin up S3", "error", err)
 		os.Exit(1)
 	}
 
 	slog.Info("Initiating RMQ connection...")
 	amqpURL := os.Getenv("RABBITMQ_URL")
 	if amqpURL == "" {
-		slog.Error("RMQ url not found in environment!")
+		slog.Error("Fatal: RMQ url not found in environment!")
 		os.Exit(1)
 	}
 
@@ -48,7 +48,7 @@ func Dispatcher() {
 
 	rmqMgr, err := shared.NewRMQManager(ctx, amqpURL)
 	if err != nil {
-		slog.Error("Failed to spin up RabbitMQ", "error", err)
+		slog.Error("Fatal: Failed to spin up RabbitMQ", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
@@ -63,7 +63,7 @@ func Dispatcher() {
 	go func() {
 		slog.Info("Dispatcher listening securely on", "address", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("Critical HTTP server crash", "error", err)
+			slog.Error("Fatal: Critical HTTP server crash", "error", err)
 			os.Exit(1)
 		}
 	}()
