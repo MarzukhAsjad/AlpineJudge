@@ -2,7 +2,7 @@ package pkg
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"shared"
 	"utils"
@@ -22,11 +22,12 @@ func Runner() {
 
 	rmqm, err := shared.NewRMQManager(ctx, os.Getenv("RABBITMQ_URL"))
 	if err != nil {
-		log.Fatalf("Fatal: RabbitMQ connection broken: %v", err)
+		slog.Error("Fatal: RabbitMQ connection broken", "error", err)
+		os.Exit(1)
 	}
 	defer rmqm.Close()
 
-	log.Println("Initializing S3...")
+	slog.Info("Initializing S3...")
 	bukcetName := os.Getenv("MINIO_S3_BUCKET")
 	s3m, err := shared.InitS3Manager(
 		ctx,
@@ -37,19 +38,23 @@ func Runner() {
 		os.Getenv("MINIO_S3_API"),
 	)
 	if err != nil {
-		log.Fatalf("Fatal: S3 Storage initialization aborted: %v", err)
+		slog.Error("Fatal: S3 Storage initialization aborted", "error", err)
+		os.Exit(1)
 	}
 	if _, err := s3m.CreateABucket(ctx, bukcetName); err != nil {
-		log.Fatalf("Failed to create bucket %v : %v\n", bukcetName, err)
+		slog.Error("Failed to create bucket", "bucket", bukcetName, "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Initialized S3 with bucket %v\n", bukcetName)
+	slog.Info("Initialized S3 with bucket", "bucket", bukcetName)
 
-	log.Println("Initializing containerd client socket...")
+	slog.Info("Initializing containerd client")
+
 	client, err := containerd.New("/run/containerd/containerd.sock")
 	if err != nil {
-		log.Fatalf("Failed to initiate containerd: %v", err)
+		slog.Error("Fatal: containerd client initialization aborted", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Initialized contianerd client")
+	slog.Info("Initialized containerd client")
 	defer client.Close()
 
 	edps := utils.EngineDeps{
