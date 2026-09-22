@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,8 @@ func InitS3Manager(
 		}
 	})
 
+	slog.Info("S3 manager initialized", "bucket", bucket, "region", region, "endpoint", customEndpoint)
+
 	return &S3Manager{
 		client: s3Client,
 		bucket: bucket,
@@ -61,11 +64,14 @@ func (m *S3Manager) CreateABucket(ctx context.Context, bucketName string) (*s3.C
 			// Catch BucketAlreadyOwnedByYou or BucketAlreadyExists
 			if apiErr.ErrorCode() == "BucketAlreadyOwnedByYou" || apiErr.ErrorCode() == "BucketAlreadyExists" {
 				// when bucket already exists, ignore error
+				slog.Debug("bucket already exists, treating as success", "bucket", bucketName, "aws_error_code", apiErr.ErrorCode())
 				return nil, nil
 			}
 		}
 		return nil, fmt.Errorf("failed to create bucket %s: %w\n", bucketName, err)
 	}
+
+	slog.Info("bucket created", "bucket", bucketName)
 	return crbo, nil
 }
 

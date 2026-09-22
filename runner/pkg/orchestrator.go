@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"local/runner/internal"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"shared"
@@ -36,7 +36,7 @@ func OrchestrateSubm(
 	rmqm shared.RMQManager,
 ) (utils.ContainerInfo, error) {
 
-	log.Printf("Recieveed JobSpec2: %v\n", jobspec)
+	slog.Debug("Received JobSpec", "jobspec", jobspec)
 
 	// submission specific sub dircectories creation
 	dirs := []string{
@@ -54,13 +54,13 @@ func OrchestrateSubm(
 		if err := os.WriteFile(
 			fmt.Sprintf("/tmp/runner/submissions/%v/Main.java", jobspec.SubmissionID), []byte(jobspec.Source), 0755,
 		); err != nil {
-			log.Printf("Failed writing sourcde code stirng to file for submissionID: %v\n", jobspec.SubmissionID)
+			slog.Error("Failed writing source code to file", "submissionID", jobspec.SubmissionID, "error", err)
 		}
 	} else {
 		if err := os.WriteFile(
 			fmt.Sprintf("/tmp/runner/submissions/%v/main.%v", jobspec.SubmissionID, jobspec.Language), []byte(jobspec.Source), 0755,
 		); err != nil {
-			log.Printf("Failed writing sourcde code stirng to file for submissionID: %v\n", jobspec.SubmissionID)
+			slog.Error("Failed writing source code to file", "submissionID", jobspec.SubmissionID, "error", err)
 		}
 	}
 
@@ -70,13 +70,13 @@ func OrchestrateSubm(
 
 	// download testsets from S3 only when it's not already downloaded
 	if !exists {
-		log.Printf("Testset %v doesn't exists on filesystem, downloading...\n", testsetDirPath)
+		slog.Info("Testset doesn't exist on filesystem, downloading", "testset", testsetDirPath)
 		if err := s3m.DownloadDirFromS3(ctx,
 			jobspec.Bucket, jobspec.Testset, testsetDirPath); err != nil {
 			return utils.ContainerInfo{}, fmt.Errorf("Failed to download testet from S3:  %v\n", err)
 		}
 	} else {
-		log.Printf("Testset %v already exists on filesystem, skipping download...\n", testsetDirPath)
+		slog.Debug("Testset already exists on filesystem, skipping download", "testset", testsetDirPath)
 	}
 
 	// prepare execution rules
@@ -89,11 +89,15 @@ func OrchestrateSubm(
 	ajagentSpec := internal.Build_AgentExecSpec(rules)
 
 	if err := json.NewEncoder(wc.Conn).Encode(ajagentSpec); err != nil {
+		slog.Debug("Failed sending execspec JSON to container agent", "submission_id", jobspec.SubmissionID, "error", err)
 		if task, tErr := wc.Container.Task(ctx, nil); tErr == nil {
 			st, _ := task.Status(cCtx)
-			log.Printf("--> TASK STATE AT BROKEN PIPE: status=%v exitCode=%d pid=%d", st.Status, st.ExitStatus, task.Pid())
+			slog.Debug("Task state at broken pipe", "status", st.Status, "exit_code", st.ExitStatus, "pid", task.Pid())
 		} else {
-			log.Printf("--> TASK COULD NOT BE FOUND (already deleted by containerd?): %v", tErr)
+			slog.Debug("Task could not be found (already deleted by containerd?)", "error", tErr)
+		}
+		if ctx.Err() != nil {
+			slog.Debug("Context was not live during broken pipe", "ctx_error", ctx.Err())
 		}
 		return utils.ContainerInfo{}, fmt.Errorf("Failed sending execspec JSON: %w", err)
 	}

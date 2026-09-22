@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"local/runner/internal"
-	"log"
+	"log/slog"
 	"math/rand"
 	"os"
 	"shared"
@@ -70,12 +70,14 @@ func (tf *TestFactory) StartTestRMQ(ctx context.Context) {
 		testcontainers.WithExposedPorts("5672"),
 	)
 	if err != nil {
-		log.Fatalf("failed to start container: %s", err)
+		slog.Error("Fatal: failed to start RabbitMQ container", "error", err)
+		os.Exit(1)
 	}
 
 	amqpURL, err := rmqContainer.AmqpURL(ctx)
 	if err != nil {
-		log.Fatalf("failed to get amqp url: %v", err)
+		slog.Error("Fatal: failed to get AMQP URL", "error", err)
+		os.Exit(1)
 	}
 
 	tf.rmqContainer = rmqContainer
@@ -83,7 +85,8 @@ func (tf *TestFactory) StartTestRMQ(ctx context.Context) {
 	tf.Rmqm, err = shared.NewRMQManager(ctx, tf.rmqURL)
 
 	if err != nil {
-		log.Fatalf("failed to setup rabbitmq manager: %v", err)
+		slog.Error("Fatal: failed to setup RabbitMQ manager", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -111,13 +114,15 @@ func (tf *TestFactory) StartTestMinioS3(ctx context.Context) {
 	)
 
 	if err != nil {
-		log.Fatalf("failed to start container: %s", err)
+		slog.Error("Fatal: failed to start MinIO container", "error", err)
+		os.Exit(1)
 	}
 
 	// Save host & port endpoint for your MinIO Go client
 	endpoint, err := minioContainer.ConnectionString(ctx)
 	if err != nil {
-		log.Fatalf("failed to get minio connection string: %v", err)
+		slog.Error("Fatal: failed to get MinIO connection string", "error", err)
+		os.Exit(1)
 	}
 
 	tf.minioContainer = minioContainer
@@ -125,7 +130,8 @@ func (tf *TestFactory) StartTestMinioS3(ctx context.Context) {
 	tf.S3m, err = shared.InitS3Manager(ctx, tf.S3bucket, tf.s3Region, tf.s3UserName, tf.s3Password, tf.s3URL)
 
 	if err != nil {
-		log.Fatalf("failted to setup S3 manager: %v", err)
+		slog.Error("Fatal: failed to setup S3 manager", "error", err)
+		os.Exit(1)
 	}
 }
 
@@ -155,10 +161,10 @@ func (tf *TestFactory) GetWarmContainer(t *testing.T, ctx context.Context) *inte
 func (tf *TestFactory) CleanupGlobal(ctx context.Context) {
 
 	if err := testcontainers.TerminateContainer(tf.rmqContainer); err != nil {
-		log.Printf("failed to terminate rabbitmq container: %s", err)
+		slog.Warn("Failed to terminate RabbitMQ container", "error", err)
 	}
 
 	if err := testcontainers.TerminateContainer(tf.minioContainer); err != nil {
-		log.Printf("failed to terminate minio container: %s", err)
+		slog.Warn("Failed to terminate MinIO container", "error", err)
 	}
 }

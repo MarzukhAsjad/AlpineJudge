@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
@@ -26,6 +27,7 @@ func findTestcaseFiles(testsetPath string, i int) (string, string, bool) {
 			if _, errOut := os.Stat(output); errOut == nil {
 				return input, output, true
 			}
+			slog.Debug("Testcase input exists without matching expected output file", "input", input, "output", output)
 		}
 	}
 

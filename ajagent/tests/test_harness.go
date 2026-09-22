@@ -2,7 +2,6 @@ package tests
 
 import (
 	"encoding/json"
-	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -169,7 +168,7 @@ func (th *TestHarness) Connect(t *testing.T) {
 	// find & connect to event stream socket
 	testStreamConn, err := net.Dial("unix", os.Getenv("STREAM_SOCKET_PATH"))
 	if err != nil {
-		log.Fatal(err)
+		t.Fatalf("failed to connect to stream socket: %v", err)
 	}
 
 	// an encoder to auto append newlines

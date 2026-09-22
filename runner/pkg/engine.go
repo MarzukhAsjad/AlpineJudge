@@ -2,9 +2,8 @@ package pkg
 
 import (
 	"context"
-	"fmt"
 	"local/runner/internal"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +19,7 @@ import (
 
 func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 
-	log.Println("Initializing Runner...")
+	slog.Info("Initializing Runner...")
 	/*
 		tmp subdirectories are created in layers.
 		The base ones (/tmp/runner/sockets /tmp/runner/testsets /tmp/runner/submissions ) are created during initiation (here)
@@ -36,15 +35,17 @@ func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0777); err != nil {
-			log.Fatalf("failed to create base temp directories %s: %v", dir, err)
+			slog.Error("Fatal: failed to create base temp directory", "dir", dir, "error", err)
+			os.Exit(1)
 		}
 	}
-	log.Println("Created base temp directories")
+	slog.Debug("Created base temp directories")
 
 	// rmq consumer (to collect jobspecs from rmq)
 	localqueue := make(chan amqp.Delivery)
 	if err := deps.Rmq.Subscribe(ctx, localqueue, deps.JobQueue, "rmq-consoomer"); err != nil {
-		log.Fatalf("Failed to initiate rmq consumer %v", err)
+		slog.Error("Fatal: failed to initiate RMQ consumer", "error", err)
+		os.Exit(1)
 	}
 
 	cCtx := namespaces.WithNamespace(ctx, deps.Namespace)
@@ -52,11 +53,13 @@ func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 	// create warm continaers | conainerQueue is buffered with MAX_CONTAINER_CAP(15 for now) , if made unbuffered, runner will freeze shortly
 	cqcap, ok := os.LookupEnv("CONTAINER_QUEUECAP")
 	if !ok {
-		log.Fatal("Failed retrieve CONTAINER_QUEUECAP from env")
+		slog.Error("Fatal: failed to retrieve CONTAINER_QUEUECAP from env")
+		os.Exit(1)
 	}
 	maxWarmContianers, err := strconv.ParseInt(cqcap, 10, 32)
 	if err != nil {
-		log.Fatalf("Failed to convert CONTAINER_QUEUECAP to int value: %v\n", err)
+		slog.Error("Fatal: failed to convert CONTAINER_QUEUECAP to int value", "error", err)
+		os.Exit(1)
 	}
 
 	containerQueue := make(chan *internal.WarmContainer, maxWarmContianers)
@@ -71,13 +74,13 @@ func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 				return
 			default:
 				countContainer++
-				log.Printf("Creating container %v", countContainer)
 
 				// create the warm container
 				slotID := slotCounter.Add(1)
+				slog.Debug("Creating warm container", "slot", slotID)
 				warmc, err := internal.CreateWarmContainer(cCtx, deps.Client, slotID)
 				if err != nil {
-					log.Printf("Warm container creation failure: %v", err)
+					slog.Warn("Warm container creation failed, retrying after cooldown", "slot", slotID, "error", err)
 					time.Sleep(1 * time.Second) // short cooldown
 					continue
 				}
@@ -85,7 +88,7 @@ func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 				// send the warm container in containerQueue
 				case containerQueue <- warmc:
 				case <-ctx.Done():
-					log.Printf("CRITICAL: Producer context canceled! Deleting container slot %d...", slotID)
+					slog.Warn("Producer context canceled, deleting container slot", "slot", slotID)
 					_ = warmc.Container.Delete(cCtx, containerd.WithSnapshotCleanup)
 					return
 				}
@@ -100,12 +103,12 @@ func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 
 		select {
 		case <-ctx.Done():
-			log.Println("Shutting down runner engine")
+			slog.Info("Shutting down runner engine")
 			wg.Wait() // block until active OrchestrateSubm workers finish
 			return
 		case msg, ok := <-localqueue:
 			if !ok {
-				log.Println("Local queue channel closed, exiting")
+				slog.Warn("Local queue channel closed, exiting")
 				return
 			}
 
@@ -126,22 +129,22 @@ func InitRunner(ctx context.Context, deps utils.EngineDeps) {
 					var err error
 					warmcontainer, err = internal.CreateWarmContainer(cCtx, deps.Client, slotID)
 					if err != nil {
-						log.Printf("Failed to create contianer %d (on-demand): %v", slotID, err)
+						slog.Error("Failed to create container (on-demand)", "slot", slotID, "error", err)
 					}
 				}
 
 				jobspec, err := utils.ProcessJobSpec(ctx, msg, deps.SSEQueue)
 				if err != nil {
-					log.Printf("Jobspec parsing error: %v", err)
+					slog.Error("Jobspec parsing error", "error", err)
 					_ = delivery.Nack(false, true)
 				}
 
 				contInfo, err := OrchestrateSubm(ctx, cCtx, warmcontainer, *deps.S3, jobspec, *deps.Rmq)
 				if err != nil {
-					log.Printf("Orchestrator error: %v", err)
+					slog.Error("Orchestrator error", "error", err)
 				}
 				_ = delivery.Ack(false) // send ACK to rmq only after sending it downstream
-				fmt.Printf("Container info: %v", contInfo)
+				slog.Debug("Container finished", "container_info", contInfo)
 
 			}(msg)
 		}

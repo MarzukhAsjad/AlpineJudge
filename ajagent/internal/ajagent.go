@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -35,14 +35,17 @@ func RunnerAgent() {
 	streamConn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		// can't stream event when socket connection itself fails, for this case log will appear in contInfo later after container exits
-		log.Fatalf("Fatal: unable to connect to host stream socket: %v", err)
+		slog.Error("Fatal: unable to connect to host stream socket", "error", err)
+		os.Exit(1)
 	}
 	defer streamConn.Close()
+	slog.Debug("Connected to host stream socket", "socket_path", socketPath)
 
 	// 2. Get instruction data over unix socket
 	reader := bufio.NewReader(streamConn)
 	payload, err := reader.ReadBytes('\n') // read till delimiter
 	if err != nil {
+		slog.Error("Failed to read execspec from stream socket", "error", err)
 		sendEvent(
 			streamConn,
 			FATAL, verdictIE, "", "",
@@ -54,6 +57,7 @@ func RunnerAgent() {
 	// 3. Unmrashal execSpec data (the instruction payload)
 	var execSpec utils.AgentExecSpec
 	if err := json.Unmarshal(payload, &execSpec); err != nil {
+		slog.Error("Failed to unmarshal execspec", "error", err)
 		sendEvent(
 			streamConn,
 			FATAL, verdictIE, "", "",
@@ -62,9 +66,11 @@ func RunnerAgent() {
 		sendResult(streamConn, verdictIE)
 		return
 	}
+	slog.Debug("Received execspec", "submission_id", execSpec.SubmissionID, "testset", execSpec.TestSetPath)
 
 	// 4. Compilation stage(if any) (args supplied from instruction payload over unix socket)
 	if len(execSpec.CompileArgs) > 0 {
+		slog.Debug("Compiling submission", "args", execSpec.CompileArgs)
 		cmd := exec.Command(execSpec.CompileArgs[0], execSpec.CompileArgs[1:]...)
 		stdout := &LimitExceededWriter{limit: int64(execSpec.LogLimitKB) * 1000}
 		stderr := &LimitExceededWriter{limit: int64(execSpec.LogLimitKB) * 1000}
@@ -73,6 +79,7 @@ func RunnerAgent() {
 		cmd.Stderr = stderr
 
 		if err := cmd.Run(); err != nil {
+			slog.Error("Compilation failed", "error", err)
 			sendEvent(
 				streamConn,
 				ERROR, verdictCE,
@@ -96,6 +103,7 @@ func RunnerAgent() {
 		}
 
 		testCount = i
+		slog.Debug("Running test", "index", i, "input", input)
 		runInfo := runTestCase(execSpec, input, output, i)
 		sendEvent(
 			streamConn,
@@ -129,6 +137,7 @@ func RunnerAgent() {
 	}
 
 	if testCount == 0 {
+		slog.Error("No valid testcases or .in files found in the testset directory", "testsetPath", testsetPath)
 		sendEvent(
 			streamConn,
 			ERROR,

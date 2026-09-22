@@ -3,7 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"shared"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -12,18 +12,17 @@ import (
 func ProcessJobSpec(
 	ctx context.Context, msg amqp.Delivery, ssequeue string) (shared.JobSpec, error) {
 
-	log.Printf("Worker processing job len: %v\n", len(msg.Body))
+	slog.Debug("Processing job spec", "len", len(msg.Body))
 
 	var jobspec shared.JobSpec
 	err := json.Unmarshal(msg.Body, &jobspec)
 
 	// NACK bad JSON and move on
 	if err != nil {
-		log.Printf("Error processsing job spec in JSON: %v | Raw: %v\n", err, jobspec)
+		slog.Error("Failed to unmarshal jobspec JSON", "error", err, "raw", string(msg.Body))
 		_ = msg.Nack(false, false)
 		return shared.JobSpec{}, err
 	}
 
-	// log.Printf("Processed job spec: %v\n", jobspec)
 	return jobspec, nil
 }

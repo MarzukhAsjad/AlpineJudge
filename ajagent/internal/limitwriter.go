@@ -3,6 +3,7 @@ package internal
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"sync"
 )
 
@@ -41,6 +42,7 @@ func (w *LimitExceededWriter) Write(p []byte) (int, error) {
 
 	if w.written+int64(n) >= w.limit {
 		if !w.limitReached {
+			slog.Warn("Output limit reached, canceling test process", "limit_bytes", w.limit)
 			w.limitReached = true
 
 			// write only upto limit

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
-	"log"
+	"log/slog"
 	"shared"
 
 	"github.com/containerd/containerd"
@@ -111,7 +111,7 @@ func StreamContainerLogsToRMQ(
 
 	// check for errors after the loop ends
 	if err := scanner.Err(); err != nil {
-		log.Printf("Error scanning input: %v", err)
+		slog.Error("Error scanning input", "error", err)
 		return
 	}
 }

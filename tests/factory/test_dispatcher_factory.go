@@ -3,7 +3,7 @@ package factory
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"shared"
 	"testing"
@@ -82,7 +82,7 @@ func (tf *TestFactory) StartTestRMQ(t *testing.T, ctx context.Context) {
 	// Register teardown with Go test framework
 	t.Cleanup(func() {
 		if err := testcontainers.TerminateContainer(rmqContainer); err != nil {
-			log.Printf("failed to terminate rabbitmq container: %s", err)
+			slog.Warn("Failed to terminate RabbitMQ container", "error", err)
 		}
 	})
 
@@ -130,7 +130,7 @@ func (tf *TestFactory) StartTestMinioS3(t *testing.T, ctx context.Context) {
 	// Clean up container automatically when the test finishes
 	t.Cleanup(func() {
 		if err := testcontainers.TerminateContainer(minioContainer); err != nil {
-			log.Printf("failed to terminate minio container: %s", err)
+			slog.Warn("Failed to terminate MinIO container", "error", err)
 		}
 	})
 

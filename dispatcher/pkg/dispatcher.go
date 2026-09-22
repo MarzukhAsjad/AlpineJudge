@@ -3,10 +3,10 @@ package pkg
 import (
 	"context"
 	"dispatcher/internal"
+	"log/slog"
 
 	// "dispatcher/internal"
 	"errors"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,7 +24,7 @@ func Dispatcher() {
 	defer stop()
 
 	// 1. initialize infrastructures
-	log.Println("Initiating S3 storage...")
+	slog.Info("Initiating S3 storage...")
 	bucket := os.Getenv("MINIO_S3_BUCKET")
 	region := os.Getenv("MINIO_S3_REGION_NAME")
 	accessKey := os.Getenv("MINIO_S3_USERNAME")
@@ -33,41 +33,44 @@ func Dispatcher() {
 
 	s3m, err := shared.InitS3Manager(ctx, bucket, region, accessKey, secretKey, s3Endpoint)
 	if err != nil {
-		log.Fatalf("Failed to spin up S3: %v", err)
+		slog.Error("Fatal: Failed to spin up S3", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Initiating RMQ connection...s")
+	slog.Info("Initiating RMQ connection...")
 	amqpURL := os.Getenv("RABBITMQ_URL")
 	if amqpURL == "" {
-		log.Fatal("RMQ url not found in environment!\n")
+		slog.Error("Fatal: RMQ url not found in environment!")
+		os.Exit(1)
 	}
 
-	log.Printf("S3 bucket: %v | region: %v | accesskey: %v | secretkey: %v | S3 endpoint: %v | RMQ: %v\n",
-		bucket, region, accessKey, secretKey, s3Endpoint, amqpURL)
+	slog.Info("S3 config initialized", "bucket", bucket, "region", region, "accessKey", accessKey, "secretKey", secretKey, "s3Endpoint", s3Endpoint)
 
 	rmqMgr, err := shared.NewRMQManager(ctx, amqpURL)
 	if err != nil {
-		log.Fatalf("Failed to spin up RabbitMQ: %v", err)
+		slog.Error("Fatal: Failed to spin up RabbitMQ", "error", err)
+		os.Exit(1)
 	}
 	defer func() {
-		log.Println("Closing RabbitMQ sockets...")
+		slog.Info("Closing RabbitMQ sockets...")
 		rmqMgr.Close()
 	}()
 
-	log.Println("Starting Dispatcher HTTP server...")
+	slog.Info("Starting Dispatcher HTTP server...")
 	server := internal.InitHTTPServer(ctx, s3m, rmqMgr)
 
 	// 2. background HTTP server listener to make it non-blocking
 	go func() {
-		log.Printf("Dispatcher listening securely on %s", server.Addr)
+		slog.Info("Dispatcher listening securely on", "address", server.Addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Critical HTTP server crash: %v", err)
+			slog.Error("Fatal: Critical HTTP server crash", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	// wait for OS signal to stop
 	<-ctx.Done()
-	log.Println("Termination signal caught! Initiating graceful teardown protocol...")
+	slog.Info("Termination signal caught! Initiating graceful teardown protocol.", "shutdown_reason", ctx.Err())
 
 	// 3. raceful shutdown Phase
 	// Force-kill the HTTP engine if it takes longer than 5 seconds to clear out pending traffic
@@ -75,10 +78,10 @@ func Dispatcher() {
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP shutdown warning: forced termination executed: %v", err)
+		slog.Error("HTTP shutdown warning: forced termination executed", "error", err)
 	} else {
-		log.Println("HTTP server closed cleanly.")
+		slog.Info("HTTP server closed cleanly")
 	}
 
-	log.Println("Dispatcher daemon terminated cleanly")
+	slog.Info("Dispatcher daemon terminated cleanly")
 }

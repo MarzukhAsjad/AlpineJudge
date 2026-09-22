@@ -3,6 +3,7 @@ package internal
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"time"
 	"utils"
@@ -65,7 +66,9 @@ func sendEvent(
 	}
 
 	// succeed or move on, can't wait during live stream
-	_ = streamEnconder.Encode(evt)
+	if err := streamEnconder.Encode(evt); err != nil {
+		slog.Warn("Failed to send event to stream socket", "event_type", evntype, "error", err)
+	}
 }
 
 /*

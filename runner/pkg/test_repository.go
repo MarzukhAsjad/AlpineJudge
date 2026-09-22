@@ -3,6 +3,7 @@ package pkg
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"shared"
@@ -95,7 +96,7 @@ func (rtr *RunnerTestRepository) CreateTempLocations(t *testing.T) {
 	_ = os.RemoveAll(submissionDir)
 
 	// create neccessary temp locations
-	fmt.Println("\nCreating necessary temp locations")
+	slog.Debug("Creating necessary temp locations", "testset", rtr.TestsetID, "submission_id", rtr.TestSubmissionID)
 	dirs := []string{
 		"/tmp/runner/sockets",
 		"/tmp/runner/testsets/" + rtr.TestsetID + "/",

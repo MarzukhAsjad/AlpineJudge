@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -29,6 +30,7 @@ func runTestCase(
 	// 2. Open input
 	stdin, err := os.Open(inputPath)
 	if err != nil {
+		slog.Error("Failed to open testcase input", "path", inputPath, "error", err)
 		return runtimeInfo{
 			Verdict: verdictIE,
 			Stdout:  "", Stderr: "",
@@ -40,6 +42,7 @@ func runTestCase(
 	// 3. Expected result
 	expected, err := os.ReadFile(expectedPath)
 	if err != nil {
+		slog.Error("Failed to read expected testcase output", "path", expectedPath, "error", err)
 		return runtimeInfo{
 			Verdict: verdictIE,
 			Stdout:  "", Stderr: "",
@@ -69,9 +72,11 @@ func runTestCase(
 	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
+		slog.Error("Failed to start submission process", "args", spec.RunArgs, "error", err)
 		return runtimeInfo{
 			Verdict: verdictIE,
-			Stdout:  stdout.buf.String(), Stderr: stdout.buf.String(),
+			// TODO: Stderr is incorrectly filled with stdout's buffer here — should be stderr.buf.String()
+			Stdout: stdout.buf.String(), Stderr: stdout.buf.String(),
 			Details: err.Error(),
 		}
 	}
